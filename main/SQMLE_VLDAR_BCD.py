@@ -311,10 +311,10 @@ class SQMLE_VLDAR_BCD(object):
         param = np.minimum(upper, param)
         return param
 
-    def fit(self, p, q, max_iter=10, max_iter_var=3, var_tol=1e-2, total_tol=1e-2, r_m=0, init_value=None, result_show=False):
+    def fit(self, p, q, step_select=3, max_iter=10, max_iter_var=3, var_tol=1e-2, total_tol=1e-2, r_m=0, init_value=None, result_show=False):
         """
         step_select: lam_var参数迭代中步长选取
-                    黄金分割
+                    0:固定步长1 ;1: Arimijo;2:BB 3:黄金分割
         max_iter:整体迭代最大次数
         total_tol：全部参数的toleran，定义为参数变化的比率小于一定值
         max_iter_var:lam_var参数迭代最大次数
@@ -335,8 +335,7 @@ class SQMLE_VLDAR_BCD(object):
             lam_loc = np.zeros(N*N*p).ravel('F')
             lam_var = np.ones(N)
             for i in range(q):
-                lam_var = np.concatenate(
-                    (lam_var, np.full((N,N), 1/(4*N**2)).ravel('F')))
+                lam_var = np.concatenate((lam_var, np.full((N,N), 1/(4*N**2)).ravel('F')))
             lam = np.concatenate((lam_loc, lam_var, np.zeros(N*(N-1)//2)))
         else:
             lam = init_value
@@ -421,7 +420,7 @@ class SQMLE_VLDAR_BCD(object):
                         a = c
                         c = d
                         d = a+0.618*(b-a)
-                    if b-a < 0.1**(N-1):
+                    if b-a < 0.1**(N**2):
                         stepsize = (a+b)/2
                         break
                 stepsize = (a+b)/2
@@ -435,10 +434,10 @@ class SQMLE_VLDAR_BCD(object):
                     stepsize = 0
                     lam[N*N*p:N*N*(p+q)+N] = lam_var_before
 
-                print("stepsize:{}".format(stepsize))
+#                 print("stepsize:{}".format(stepsize))
                 if i>=1 or j>=1:
                     var_diff_ratio_inner = np.linalg.norm((lam[N*N*p:N*N*(p+q)+N]-lam_var_before)/lam_var_before, ord=np.inf)
-                    print(var_diff_ratio_inner)
+#                     print(var_diff_ratio_inner)
                     if var_diff_ratio_inner < var_tol:
                         break
 
@@ -1072,17 +1071,17 @@ class SQMLE_VLDAR_BCD(object):
             (E_wt2**(-1)*U_mean, coe_sq@U_var_sq))@Sigma_inv
         H_mix_sq = np.hstack((H_mix_sq_left, H_mix_sq_right))
         V_mix_sq = H_mix_sq@G_mix_sq@H_mix_sq.T
-        
-        stat_mean =(T-r-M)* r_mean@np.linalg.inv(V_mean)@r_mean
-        stat_var_abs =(T-r-M)* r_var_abs@np.linalg.inv(V_var_abs)@r_var_abs
-        stat_var_sq =(T-r-M)* r_var_sq@np.linalg.inv(V_var_sq)@r_var_sq
-        stat_mix_abs =(T-r-M)* r_mix_abs@np.linalg.inv(V_mix_abs)@r_mix_abs
-        stat_mix_sq =(T-r-M)* r_mix_sq@np.linalg.inv(V_mix_sq)@r_mix_sq
         self.V_mean = np.diag(V_mean)
         self.V_var_abs = np.diag(V_var_abs)
         self.V_var_sq = np.diag(V_var_sq)
         self.V_mix_abs = np.diag(V_mix_abs)
         self.V_mix_sq = np.diag(V_mix_sq)
+        stat_mean =(T-r-M)* r_mean@np.linalg.inv(V_mean)@r_mean
+        stat_var_abs =(T-r-M)* r_var_abs@np.linalg.inv(V_var_abs)@r_var_abs
+        stat_var_sq =(T-r-M)* r_var_sq@np.linalg.inv(V_var_sq)@r_var_sq
+        stat_mix_abs =(T-r-M)* r_mix_abs@np.linalg.inv(V_mix_abs)@r_mix_abs
+        stat_mix_sq =(T-r-M)* r_mix_sq@np.linalg.inv(V_mix_sq)@r_mix_sq
+
         stat_name = ['stat_mean', 'stat_var_abs',
                      'stat_var_sq', 'stat_mix_abs', 'stat_mix_sq']
         stat = np.array([stat_mean, stat_var_abs, stat_var_sq,
@@ -1102,3 +1101,4 @@ class SQMLE_VLDAR_BCD(object):
             values, columns=['stat', 'p_value'], index=stat_name)
 
         return result_Se
+    

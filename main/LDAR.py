@@ -160,7 +160,7 @@ class LDAR(object):
         param=np.minimum(upper,param)
         return param
     
-    def fit(self,p,q,max_iter=10,total_tol=1e-3,r_m=0,result_show = True):
+    def fit(self,p,q,max_iter=10,total_tol=1e-3,r_m=0,result_show = False):
         """
         step_select: lam_var参数迭代中步长选取
                     0:固定步长1 ;1: Arimijo;2:BB 3:黄金分割
@@ -218,7 +218,7 @@ class LDAR(object):
             stepsize=(a+b)/2
 
             lam=self.bound_param(lam-stepsize*direct,lower,upper)
-            print("stepsize:{}".format(stepsize))
+#             print("stepsize:{}".format(stepsize))
 
             jac_diff=np.linalg.norm(jac,ord=np.inf)
             
