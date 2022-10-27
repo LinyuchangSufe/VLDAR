@@ -18,9 +18,12 @@ class LDAR(object):
     
     def weight(self, p, q, r_m=0):
         '''
-        根据p 计算weight N-p
-        r_m=0:表示根据p，q的值来判断是否使用selfweight。若r_m=-1,则unweighted；若r_m！=0，则根据r_m的值来表示weight滞后阶数
-
+        Input:
+        p,q denote the order in conditional mean and conditional volality, respectively
+        r_m:(int)
+            ==0--if p<=q then no weight; else weight lags up to p
+            !=0 and >0-- weight lags up to r_m
+            ==-1-- no weights
         '''
 
         y = self.y
@@ -51,7 +54,7 @@ class LDAR(object):
             weight = np.zeros(np.shape(a_t))
             weight[a_t == 0] = 1
             weight[a_t != 0] = y_95_quan**2*a_t[a_t != 0]**(-2)  # T-p+1
-        return weight[r-p:-1]  # 去掉最后一个和前r-p个，dim=T-r
+        return weight[r-p:-1]  # 
     
     def likelihood(self,lam,p,q,r_m):
         """
@@ -151,7 +154,7 @@ class LDAR(object):
         return jac,hess
     def bound_param(self,param,lower,upper):
         """
-        将所有参数限制在lower和upper里面
+        restrict every parameter into our lower and upper bound
         """
         n=len(param)
         lower=lower*np.ones(n)
@@ -162,13 +165,13 @@ class LDAR(object):
     
     def fit(self,p,q,max_iter=10,total_tol=1e-3,r_m=0,result_show = False):
         """
-        step_select: lam_var参数迭代中步长选取
-                    0:固定步长1 ;1: Arimijo;2:BB 3:黄金分割
-        max_iter:整体迭代最大次数
-        total_tol：全部参数的toleran，定义为参数变化的比率小于一定值
-        max_iter_var:lam_var参数迭代最大次数
-        var_tol:lam_var参数的toleran，定义为参数变化的比率小于一定值
-        r_m=0:表示根据p，q的值来判断是否使用selfweight。若r_m！=0，则根据r_m的值来表示weight滞后阶数
+        p,q:selected order 
+        max_iter:maximum iterate number
+        total_tol:toleran for |(lam^{k+1}-lam^{k})/lam^{k}|_{max} 
+        r_m:==0--if p<=q then no weight; else weight lags up to p
+            !=0 and >0-- weight lags up to r_m
+            ==-1-- no weights
+        result_show:to show detail iterative process, default is None.
         """
         self.p=p
         self.q=q
@@ -189,7 +192,7 @@ class LDAR(object):
         weight=self.weight(p,q,r_m)
         half_weight=np.sqrt(weight)
         
-        all_diff=pd.DataFrame(columns=['jac_diff','lam_tol']) ## 用来记录不同部分的前后次迭代的变化大小
+        all_diff=pd.DataFrame(columns=['jac_diff','lam_tol']) ##
 
         for i in range(max_iter):
             lam_0=lam.copy()
@@ -290,7 +293,6 @@ class LDAR(object):
         
     def Asymptotic_deviation(self):
         '''
-        求出理论上的渐近标准差
         Sigma and Omega
         ------------------------
         param fitted_lam:(m*m*(p+q)+m+m*(m-1)//2)list or array
@@ -299,7 +301,7 @@ class LDAR(object):
         param q:int - order of condition variance 
         '''
 #         lam=self.param
-        lam=np.array(self.lam) #若是list 转化为array
+        lam=np.array(self.lam)
         y=self.y
         T=y.size
         p=self.p

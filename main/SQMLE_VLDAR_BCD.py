@@ -66,9 +66,12 @@ class SQMLE_VLDAR_BCD(object):
 
     def weight(self, p, q, r_m=0):
         '''
-        根据p 计算weight N-p
-        r_m=0:表示根据p，q的值来判断是否使用selfweight。若r_m=-1,则unweighted；若r_m！=0，则根据r_m的值来表示weight滞后阶数
-
+        Input:
+        p,q denote the order in conditional mean and conditional volality, respectively
+        r_m:(int)
+            ==0--if p<=q then no weight; else weight lags up to p
+            !=0 and >0-- weight lags up to r_m
+            ==-1-- no weights
         '''
 
         y = self.y
@@ -99,11 +102,11 @@ class SQMLE_VLDAR_BCD(object):
             weight = np.zeros(np.shape(a_t))
             weight[a_t == 0] = 1
             weight[a_t != 0] = y_95_quan**2*a_t[a_t != 0]**(-2)  # T-p+1
-        return weight[r-p:-1]  # 去掉最后一个和前r-p个，dim=T-r
+        return weight[r-p:-1]  
 
     def loss_func_alpha(self, lam_var, lam_loc, lam_cov, p, q, r_m=0):
         """
-        构建一个只关于条件方差部分的loss，其他已知道的数当作常数省略。
+        loss function with respect to the parameters of scale part coefficients.
         """
 
         if r_m == 0:
@@ -114,8 +117,8 @@ class SQMLE_VLDAR_BCD(object):
         T, N = np.shape(y)
 
         lam_loc_mat = lam_loc.reshape(
-            (N, N*p), order='F')  # 将条件均值部分参数矩阵 N \times N*p
-        # 将条件方差部分参数矩阵 N \times N*q+1
+            (N, N*p), order='F')  # N \times N*p
+        
         lam_var_mat = lam_var.reshape((N, 1+N*q), order='F')
 
         cov_mat = np.zeros((N, N))
@@ -150,99 +153,99 @@ class SQMLE_VLDAR_BCD(object):
         loss_alpha = part_1+1/2*part_2
         return loss_alpha/N/(T-r)
 
-    def jac_alpha(self, lam_var, lam_loc, lam_cov, p, q, r_m=0):
-        if r_m == 0:
-            r = max(p, q)
-        else:
-            r = r_m
-        y = self.y
-        T, N = np.shape(y)
+    # def jac_alpha(self, lam_var, lam_loc, lam_cov, p, q, r_m=0):
+    #     if r_m == 0:
+    #         r = max(p, q)
+    #     else:
+    #         r = r_m
+    #     y = self.y
+    #     T, N = np.shape(y)
 
-        lam_loc_mat = lam_loc.reshape(
-            (N, N*p), order='F')  # 将条件均值部分参数矩阵 N \times N*p
-        # 将条件方差部分参数矩阵 N \times N*q+1
-        lam_var_mat = lam_var.reshape((N, 1+N*q), order='F')
+    #     lam_loc_mat = lam_loc.reshape(
+    #         (N, N*p), order='F')  #  N \times N*p
+       
+    #     lam_var_mat = lam_var.reshape((N, 1+N*q), order='F')
 
-        cov_mat = np.zeros((N, N))
-        cov_mat[np.tril_indices(N, -1)] = lam_cov
-        cov_mat = cov_mat+cov_mat.T+np.eye(N)
+    #     cov_mat = np.zeros((N, N))
+    #     cov_mat[np.tril_indices(N, -1)] = lam_cov
+    #     cov_mat = cov_mat+cov_mat.T+np.eye(N)
 
-        cov_mat_inv = np.linalg.inv(cov_mat)
-        cov_mat_det = np.linalg.det(cov_mat)
+    #     cov_mat_inv = np.linalg.inv(cov_mat)
+    #     cov_mat_det = np.linalg.det(cov_mat)
 
-        y_trim = y[r:].T  # N*(T-r) matrix
-        y_abs = np.abs(y)  # T*N
-        y_abs_trim = y_abs[r:].T  # N*(T-r) matrix
+    #     y_trim = y[r:].T  # N*(T-r) matrix
+    #     y_abs = np.abs(y)  # T*N
+    #     y_abs_trim = y_abs[r:].T  # N*(T-r) matrix
 
-        weight = self.weight(p, q, r_m)
+    #     weight = self.weight(p, q, r_m)
 
-        Z = np.zeros((N*p, T-r))
-        Z_abs = np.zeros((N*q+1, T-r))
-        for i in range(T-r):
-            Z[:, i] = (y[r+i-p:r+i][::-1]).ravel('C')
-            Z_abs[:, i] = np.append(1, (y_abs[r+i-q:r+i][::-1]).ravel('C'))
+    #     Z = np.zeros((N*p, T-r))
+    #     Z_abs = np.zeros((N*q+1, T-r))
+    #     for i in range(T-r):
+    #         Z[:, i] = (y[r+i-p:r+i][::-1]).ravel('C')
+    #         Z_abs[:, i] = np.append(1, (y_abs[r+i-q:r+i][::-1]).ravel('C'))
 
-        epsilon_trim = y_trim-lam_loc_mat@Z
-        H_trim = lam_var_mat @ Z_abs
+    #     epsilon_trim = y_trim-lam_loc_mat@Z
+    #     H_trim = lam_var_mat @ Z_abs
 
-        eta_trim = epsilon_trim / H_trim
+    #     eta_trim = epsilon_trim / H_trim
 
-        part = (1/H_trim-(eta_trim/H_trim) *
-                (cov_mat_inv@eta_trim))@np.diag(weight)
+    #     part = (1/H_trim-(eta_trim/H_trim) *
+    #             (cov_mat_inv@eta_trim))@np.diag(weight)
 
-        jac = (part@Z_abs.T).ravel('F')
+    #     jac = (part@Z_abs.T).ravel('F')
 
-        return jac/N/(T-r)
+    #     return jac/N/(T-r)
 
-    def hess_alpha(self, lam_var, lam_loc, lam_cov, p, q, r_m=0):
-        '''
-        '''
-        y = self.y
-        T, N = np.shape(y)
-        weight = self.weight(p, q, r_m)
+    # def hess_alpha(self, lam_var, lam_loc, lam_cov, p, q, r_m=0):
+    #     '''
+    #     '''
+    #     y = self.y
+    #     T, N = np.shape(y)
+    #     weight = self.weight(p, q, r_m)
 
-        lam_loc_mat = lam_loc.reshape(
-            (N, N*p), order='F')  # 将条件均值部分参数矩阵 m \times m*p
-        lam_var_mat = lam_var.reshape(
-            (N, 1+N*q), order='F')  # 将条件方差部分参数矩阵 m \times m*q
+    #     lam_loc_mat = lam_loc.reshape(
+    #         (N, N*p), order='F')  #  m \times m*p
+    #     lam_var_mat = lam_var.reshape(
+    #         (N, 1+N*q), order='F')  #  m \times m*q
 
-        cov_mat = np.zeros((N, N))
-        cov_mat[np.tril_indices(N, -1)] = lam_cov
-        cov_mat = cov_mat+cov_mat.T+np.eye(N)
+    #     cov_mat = np.zeros((N, N))
+    #     cov_mat[np.tril_indices(N, -1)] = lam_cov
+    #     cov_mat = cov_mat+cov_mat.T+np.eye(N)
 
-        cov_mat_inv = np.linalg.inv(cov_mat)
-        cov_mat_det = np.linalg.det(cov_mat)
+    #     cov_mat_inv = np.linalg.inv(cov_mat)
+    #     cov_mat_det = np.linalg.det(cov_mat)
 
-        d_vecGamma_T_d_sigama_I_gamma_inv = self.K(
-            N)@np.kron(np.eye(m), cov_mat_inv)
+    #     d_vecGamma_T_d_sigama_I_gamma_inv = self.K(
+    #         N)@np.kron(np.eye(m), cov_mat_inv)
 
-        # 二阶导数
+    #     # second derivative
 
-        s_d_var = np.zeros((m*m*q+m, m*m*q+m))
+    #     s_d_var = np.zeros((m*m*q+m, m*m*q+m))
 
-        if r_m == 0:
-            r = max(p, q)
-        else:
-            r = r_m
-        for t in range(r, T):
-            wt = weight[t-r]
+    #     if r_m == 0:
+    #         r = max(p, q)
+    #     else:
+    #         r = r_m
+    #     for t in range(r, T):
+    #         wt = weight[t-r]
 
-            y_mean = y[t-p:t][::-1].ravel('C')
-            y_var = np.append(1, np.abs(y[t-q:t][::-1]).ravel('C'))
+    #         y_mean = y[t-p:t][::-1].ravel('C')
+    #         y_var = np.append(1, np.abs(y[t-q:t][::-1]).ravel('C'))
 
-            cond_mean = lam_loc_mat@y_mean
-            h_var = lam_var_mat@y_var
+    #         cond_mean = lam_loc_mat@y_mean
+    #         h_var = lam_var_mat@y_var
 
-            eta_vec = (y[t]-cond_mean)/h_var
-            eta_diag = np.diag(eta_vec)
-            d_h_d_alpha_T = np.kron(y_var, np.eye(m))
-            d_h_T_d_alpha_D_inv = d_h_d_alpha_T.T/h_var
+    #         eta_vec = (y[t]-cond_mean)/h_var
+    #         eta_diag = np.diag(eta_vec)
+    #         d_h_d_alpha_T = np.kron(y_var, np.eye(m))
+    #         d_h_T_d_alpha_D_inv = d_h_d_alpha_T.T/h_var
 
-            # s_d_var
-            s_d_var += wt*d_h_T_d_alpha_D_inv@(np.eye(N)-eta_diag@cov_mat_inv@eta_diag-2*eta_diag @
-                                               np.diag(cov_mat_inv@eta_vec))@d_h_T_d_alpha_D_inv.T
+    #         # s_d_var
+    #         s_d_var += wt*d_h_T_d_alpha_D_inv@(np.eye(N)-eta_diag@cov_mat_inv@eta_diag-2*eta_diag @
+    #                                            np.diag(cov_mat_inv@eta_vec))@d_h_T_d_alpha_D_inv.T
 
-        return -s_d_var/N/(T-r)
+    #     return -s_d_var/N/(T-r)
 
     def direct_alpha(self, lam_var, lam_loc, lam_cov, p, q, r_m=0):
         """
@@ -256,8 +259,7 @@ class SQMLE_VLDAR_BCD(object):
         T, N = np.shape(y)
 
         lam_loc_mat = lam_loc.reshape(
-            (N, N*p), order='F')  # 将条件均值部分参数矩阵 N \times N*p
-        # 将条件方差部分参数矩阵 N \times N*q+1
+            (N, N*p), order='F')  #  N \times N*p
         lam_var_mat = lam_var.reshape((N, 1+N*q), order='F')
 
         cov_mat = np.zeros((N, N))
@@ -302,7 +304,7 @@ class SQMLE_VLDAR_BCD(object):
 
     def bound_param(self, param, lower, upper):
         """
-        将所有参数限制在lower和upper里面
+        restrict every parameter into our lower and upper bound
         """
         n = len(param)
         lower = lower*np.ones(n)
@@ -313,15 +315,16 @@ class SQMLE_VLDAR_BCD(object):
 
     def fit(self, p, q, step_select=3, max_iter=10, max_iter_var=3, var_tol=1e-2, total_tol=1e-2, r_m=0, init_value=None, result_show=False):
         """
-        step_select: lam_var参数迭代中步长选取
-                    0:固定步长1 ;1: Arimijo;2:BB 3:黄金分割
-        max_iter:整体迭代最大次数
-        total_tol：全部参数的toleran，定义为参数变化的比率小于一定值
-        max_iter_var:lam_var参数迭代最大次数
-        var_tol:lam_var参数的toleran，定义为参数变化的比率小于一定值
-       init_value: 0表示采用对角元素符合平稳条件。 或者自定义一个init_value
-        r_m=0:表示根据p，q的值来判断是否使用selfweight。若r_m=-1: 表示unweighted method;若r_m！=0，则根据r_m的值来表示weight滞后阶数
-        result_show:是否要print结果，默认不print
+        p,q:selected order 
+        max_iter:maximum iterate number
+        total_tol:toleran for |(lam^{k+1}-lam^{k})/lam^{k}|_{max} 
+        max_iter_var:maximum iterate number for conditional variance part
+        var_tol:toleran for |(lam_var^{k+1}-lam_var^{k})/lam_var^{k}|_{max} 
+       init_value: init value for all lam
+        r_m:==0--if p<=q then no weight; else weight lags up to p
+            !=0 and >0-- weight lags up to r_m
+            ==-1-- no weights
+        result_show:to show detail iterative process, default is None.
         """
         self.p = p
         self.q = q
@@ -344,9 +347,8 @@ class SQMLE_VLDAR_BCD(object):
         lam_var = lam[N*N*p:N*N*(p+q)+N]
         lam_cov = lam[N*N*(p+q)+N:]
 
-        lam_loc_mat = lam_loc.reshape((N, N*p), order='F')  # 将条件均值部分参数矩阵 N \times N*p
-        # 将条件方差部分参数矩阵 N \times N*q+1
-        lam_var_mat = lam_var.reshape((N, 1+N*q), order='F')
+        lam_loc_mat = lam_loc.reshape((N, N*p), order='F')  #  N \times N*p
+        lam_var_mat = lam_var.reshape((N, 1+N*q), order='F') # N \times N*q+1
 
         cov_mat = np.zeros((N, N))
         cov_mat[np.tril_indices(N, -1)] = lam_cov
@@ -357,16 +359,16 @@ class SQMLE_VLDAR_BCD(object):
         weight = self.weight(p, q, r_m)
         half_weight = np.sqrt(weight)
 
-        # 用来记录不同部分的前后次迭代的变化大小
+        # Record
         all_diff = pd.DataFrame(
             columns=['loc_ratio', 'var_ratio', 'cov_ratio', 'var_direct', 'lam_ratio'])
-        t_loc = 0  # 用来分别记录三个部分迭代所需要花的时间
+        t_loc = 0  # Record mian computational part
         t_var = 0
         t_cov = 0
         for i in range(max_iter):
             lam_0 = lam.copy()
 
-            # 更新mean
+            # mean
             t_1 = time.time()
             part1 = 0
             part2 = 0
@@ -388,7 +390,7 @@ class SQMLE_VLDAR_BCD(object):
 
             t_loc += time.time()-t_1
 
-            # 更新var
+            # var
 
             t_2 = time.time()
             lower = np.array([0.1**(N**3)]*N+[0.1**(N**3)]*(N*N*q))
@@ -399,7 +401,7 @@ class SQMLE_VLDAR_BCD(object):
                 
                 direct = np.linalg.inv(hess)@jac
                 f=self.loss_func_alpha(self.bound_param(lam_var, lower, upper), lam_loc, lam_cov, p, q, r_m)
-                # 黄金分割法
+                # Golden selection for stepsize
                 a = -2
                 b = 2
                 c = a+0.382*(b-a)
@@ -444,7 +446,7 @@ class SQMLE_VLDAR_BCD(object):
             
             t_var += time.time()-t_2
 
-            # 更新corr
+            # corr
             t_3 = time.time()
             Gamma = 0
 
@@ -473,10 +475,10 @@ class SQMLE_VLDAR_BCD(object):
 
             if i >=1:
             
-                loc_diff_ratio = np.linalg.norm((lam[:N*N*p]-lam_0[:N*N*p])/lam_0[:N*N*p])  # 记录loc前后的变化
+                loc_diff_ratio = np.linalg.norm((lam[:N*N*p]-lam_0[:N*N*p])/lam_0[:N*N*p])  
                 var_diff_ratio = np.linalg.norm((lam[N*N*p:N*N*(p+q)+N]-lam_0[N*N*p:N*N*(p+q)+N])/lam_0[N*N*p:N*N*(p+q)+N], ord=np.inf)
                 cov_diff_ratio = np.linalg.norm((lam[N*N*(p+q)+N:]-lam_0[N*N*(p+q)+N:])/lam_0[N*N*(p+q)+N:])
-                var_direct = np.linalg.norm(direct, ord=np.inf)  # 取梯度绝对值的最大值
+                var_direct = np.linalg.norm(direct, ord=np.inf)  
                 lam_ratio = np.linalg.norm((lam-lam_0)/lam_0, ord=np.inf)
 
                 all_diff.loc[i] = [loc_diff_ratio, var_diff_ratio,
@@ -527,8 +529,8 @@ class SQMLE_VLDAR_BCD(object):
         lam_cov = lam[N*N*(p+q)+N:]
 
         lam_loc_mat = lam_loc.reshape(
-            (N, N*p), order='F')  # 将条件均值部分参数矩阵 N \times N*p
-        # 将条件方差部分参数矩阵 N \times N*q+1
+            (N, N*p), order='F')  # N \times N*p
+        # N \times N*q+1
         lam_var_mat = lam_var.reshape((N, 1+N*q), order='F')
 
         cov_mat = np.zeros((N, N))
@@ -568,7 +570,6 @@ class SQMLE_VLDAR_BCD(object):
     def K(self, N):
         '''
         d_vec'(gamma)/d_(sigama)
-        innovation项关于sigama求导
         '''
         k = np.zeros((0, N*N))
         unit_matrix_m = np.eye(N)
@@ -586,7 +587,7 @@ class SQMLE_VLDAR_BCD(object):
 
     def Asymptotic_deviation(self):
         '''
-        求出理论上的渐近标准差
+        compute ASD
         Sigma and Omega
         ------------------------
         param fitted_lam:(m*m*(p+q)+m+m*(m-1)//2)list or array
@@ -595,7 +596,7 @@ class SQMLE_VLDAR_BCD(object):
         param q:int - order of condition variance 
         '''
 #         lam=self.param
-        lam = np.array(self.lam)  # 若是list 转化为array
+        lam = np.array(self.lam)  
         y = self.y
         T, N = np.shape(y)
         p = self.p
@@ -609,8 +610,8 @@ class SQMLE_VLDAR_BCD(object):
         lam_cov = lam[N*N*(p+q)+N:]
 
         lam_loc_mat = lam_loc.reshape(
-            (N, N*p), order='F')  # 将条件均值部分参数矩阵 N \times N*p
-        # 将条件方差部分参数矩阵 N \times N*q+1
+            (N, N*p), order='F')  #  N \times N*p
+        #  N \times N*q+1
         lam_var_mat = lam_var.reshape((N, 1+N*q), order='F')
 
         cov_mat = np.zeros((N, N))
@@ -620,7 +621,7 @@ class SQMLE_VLDAR_BCD(object):
         cov_mat_inv = np.linalg.inv(cov_mat)
         cov_mat_det = np.linalg.det(cov_mat)
 
-        d_D_T_d_h = np.zeros((N, N*N))  # 用于dV_dtheta 求导
+        d_D_T_d_h = np.zeros((N, N*N)) 
 
         for i in range(N):
             d_D_T_d_h[i, i*N+i] = 1
@@ -680,122 +681,121 @@ class SQMLE_VLDAR_BCD(object):
             dict(zip(['Omega', 'Sigma', 'A_D'], [Omega, Sigma, A_D])))
         return result
 
-    def Asymptotic_deviation_2(self):
-        '''
-        求出理论上的渐近标准差
-        Sigma and Omega
-        ------------------------
-        param fitted_lam:(m*m*(p+q)+m+m*(m-1)//2)list or array
-        param y:(n * m) - data
-        param p:int - order of condition mean 
-        param q:int - order of condition variance 
-        '''
-#         lam=self.param
-        lam = np.array(self.lam)  # 若是list 转化为array
-        y = self.y
-        T, N = np.shape(y)
-        p = self.p
-        q = self.q
-        eta = self.y_pre()['eta_ios']
-        weight = self.weight(p, q, r_m=0)
+#     def Asymptotic_deviation_2(self):
+#         '''
+#         Sigma and Omega
+#         ------------------------
+#         param fitted_lam:(m*m*(p+q)+m+m*(m-1)//2)list or array
+#         param y:(n * m) - data
+#         param p:int - order of condition mean 
+#         param q:int - order of condition variance 
+#         '''
+# #         lam=self.param
+#         lam = np.array(self.lam)  
+#         y = self.y
+#         T, N = np.shape(y)
+#         p = self.p
+#         q = self.q
+#         eta = self.y_pre()['eta_ios']
+#         weight = self.weight(p, q, r_m=0)
 
-        d = (p+q)*N*N+N+N*(N-1)//2
-        lam_loc = lam[:N*N*p]
-        lam_var = lam[N*N*p:N*N*(p+q)+N]
-        lam_cov = lam[N*N*(p+q)+N:]
+#         d = (p+q)*N*N+N+N*(N-1)//2
+#         lam_loc = lam[:N*N*p]
+#         lam_var = lam[N*N*p:N*N*(p+q)+N]
+#         lam_cov = lam[N*N*(p+q)+N:]
 
-        lam_loc_mat = lam_loc.reshape(
-            (N, N*p), order='F')  # 将条件均值部分参数矩阵 N \times N*p
-        # 将条件方差部分参数矩阵 N \times N*q+1
-        lam_var_mat = lam_var.reshape((N, 1+N*q), order='F')
+#         lam_loc_mat = lam_loc.reshape(
+#             (N, N*p), order='F')  #  N \times N*p
+#         #  N \times N*q+1
+#         lam_var_mat = lam_var.reshape((N, 1+N*q), order='F')
 
-        cov_mat = np.zeros((N, N))
-        cov_mat[np.tril_indices(N, -1)] = lam_cov
-        cov_mat = cov_mat+cov_mat.T+np.eye(N)
+#         cov_mat = np.zeros((N, N))
+#         cov_mat[np.tril_indices(N, -1)] = lam_cov
+#         cov_mat = cov_mat+cov_mat.T+np.eye(N)
 
-        cov_mat_inv = np.linalg.inv(cov_mat)
+#         cov_mat_inv = np.linalg.inv(cov_mat)
 
-        Sigma = 0
-        Omega = 0
+#         Sigma = 0
+#         Omega = 0
 
-        r = max(p, q)
-        eta_tilde_cov_eta_eta_T_cov_inv_eta_tilde = 0
-        vec_eta_eta_Tvec_T_eta_eta_T = 0
-        eta_eta_T_gamma_eta_tilde = 0
-        eta_vec_T_eta_eta_T = 0
-        eta_tilde_cov_eta_vec_T_eta_eta_T = 0
-        cov_mat_tilde_col = np.zeros((N, N*N))
-        for i in range(N):
-            cov_mat_tilde_col[:, i*N:(i+1)*N] = np.diag(cov_mat[i])
+#         r = max(p, q)
+#         eta_tilde_cov_eta_eta_T_cov_inv_eta_tilde = 0
+#         vec_eta_eta_Tvec_T_eta_eta_T = 0
+#         eta_eta_T_gamma_eta_tilde = 0
+#         eta_vec_T_eta_eta_T = 0
+#         eta_tilde_cov_eta_vec_T_eta_eta_T = 0
+#         cov_mat_tilde_col = np.zeros((N, N*N))
+#         for i in range(N):
+#             cov_mat_tilde_col[:, i*N:(i+1)*N] = np.diag(cov_mat[i])
 
-        for t in range(T-r):
+#         for t in range(T-r):
 
-            eta_tilde_cov_eta_eta_T_cov_inv_eta_tilde += np.diag(
-                eta[t])@cov_mat_inv@np.outer(eta[t], eta[t])@cov_mat_inv@np.diag(eta[t])/(T-r)
-            vec_eta_eta_Tvec_T_eta_eta_T += np.outer(np.outer(eta[t], eta[t]).ravel(
-                'F'), np.outer(eta[t], eta[t]).ravel('F'))/(T-r)
-            eta_eta_T_gamma_eta_tilde += np.outer(
-                eta[t], eta[t])@cov_mat_inv@np.diag(eta[t])/(T-r)
-            eta_vec_T_eta_eta_T += np.outer(eta[t],
-                                            np.outer(eta[t], eta[t]).ravel('F'))/(T-r)
-            eta_tilde_cov_eta_vec_T_eta_eta_T += np.diag(eta[t])@cov_mat_inv@np.outer(
-                eta[t], (np.outer(eta[t], eta[t])).ravel('F'))/(T-r)
+#             eta_tilde_cov_eta_eta_T_cov_inv_eta_tilde += np.diag(
+#                 eta[t])@cov_mat_inv@np.outer(eta[t], eta[t])@cov_mat_inv@np.diag(eta[t])/(T-r)
+#             vec_eta_eta_Tvec_T_eta_eta_T += np.outer(np.outer(eta[t], eta[t]).ravel(
+#                 'F'), np.outer(eta[t], eta[t]).ravel('F'))/(T-r)
+#             eta_eta_T_gamma_eta_tilde += np.outer(
+#                 eta[t], eta[t])@cov_mat_inv@np.diag(eta[t])/(T-r)
+#             eta_vec_T_eta_eta_T += np.outer(eta[t],
+#                                             np.outer(eta[t], eta[t]).ravel('F'))/(T-r)
+#             eta_tilde_cov_eta_vec_T_eta_eta_T += np.diag(eta[t])@cov_mat_inv@np.outer(
+#                 eta[t], (np.outer(eta[t], eta[t])).ravel('F'))/(T-r)
 
-        for t in range(r, T):
-            wt = weight[t-r]
+#         for t in range(r, T):
+#             wt = weight[t-r]
 
-            y_mean = y[t-p:t][::-1].ravel('C')
-            y_var = np.append(1, np.abs(y[t-q:t][::-1]).ravel('C'))
+#             y_mean = y[t-p:t][::-1].ravel('C')
+#             y_var = np.append(1, np.abs(y[t-q:t][::-1]).ravel('C'))
 
-            cond_mean = lam_loc_mat@y_mean
-            epsilon = y[t]-cond_mean
-            h_var = lam_var_mat@y_var
-            D = np.diag(h_var)
-            D_inv = np.diag(1/h_var)
+#             cond_mean = lam_loc_mat@y_mean
+#             epsilon = y[t]-cond_mean
+#             h_var = lam_var_mat@y_var
+#             D = np.diag(h_var)
+#             D_inv = np.diag(1/h_var)
 
-            d_epsilon_d_phi_T = -np.kron(y_mean, np.eye(N))
-            d_epsilon_d_theta_T = np.hstack(
-                (d_epsilon_d_phi_T, np.zeros((N, d-N*N*p))))
-            d_h_d_alpha_T = np.kron(y_var, np.eye(N))
-            d_h_d_theta_T = np.hstack(
-                (np.zeros((N, N*N*p)), d_h_d_alpha_T, np.zeros((N, N*(N-1)//2))))
-            d_gamma_d_sigma_T = self.K(N).T
-            d_gamma_d_theta_T = np.hstack(
-                (np.zeros((N**2, N*N*(p+q)+N)), d_gamma_d_sigma_T))
+#             d_epsilon_d_phi_T = -np.kron(y_mean, np.eye(N))
+#             d_epsilon_d_theta_T = np.hstack(
+#                 (d_epsilon_d_phi_T, np.zeros((N, d-N*N*p))))
+#             d_h_d_alpha_T = np.kron(y_var, np.eye(N))
+#             d_h_d_theta_T = np.hstack(
+#                 (np.zeros((N, N*N*p)), d_h_d_alpha_T, np.zeros((N, N*(N-1)//2))))
+#             d_gamma_d_sigma_T = self.K(N).T
+#             d_gamma_d_theta_T = np.hstack(
+#                 (np.zeros((N**2, N*N*(p+q)+N)), d_gamma_d_sigma_T))
 
-            Omega += wt**2 * (d_epsilon_d_theta_T.T@D_inv@cov_mat_inv@D_inv@d_epsilon_d_theta_T
-                              + d_h_d_theta_T.T@D_inv@(eta_tilde_cov_eta_eta_T_cov_inv_eta_tilde-np.full(
-                                  (N, N), 1))@D_inv@d_h_d_theta_T
-                              + 0.25 *
-                              d_gamma_d_theta_T.T@np.kron(np.eye(N),
-                                                          cov_mat_inv)
-                              @ (np.kron(cov_mat_inv, np.eye(N))@vec_eta_eta_Tvec_T_eta_eta_T@np.kron(cov_mat_inv, np.eye(N))-np.outer(np.eye(N).ravel('F'), np.eye(N).ravel('F')))
-                              @ np.kron(np.eye(N), cov_mat_inv)@d_gamma_d_theta_T
-                              - d_epsilon_d_theta_T.T@D_inv@cov_mat_inv@eta_eta_T_gamma_eta_tilde@D_inv@d_h_d_theta_T
-                              - (d_epsilon_d_theta_T.T@D_inv@cov_mat_inv @
-                                 eta_eta_T_gamma_eta_tilde@D_inv@d_h_d_theta_T).T
-                              - 0.5*d_epsilon_d_theta_T.T@D_inv@cov_mat_inv@eta_vec_T_eta_eta_T@np.kron(
-                                  cov_mat_inv, cov_mat_inv)@d_gamma_d_theta_T
-                              - (0.5*d_epsilon_d_theta_T.T@D_inv@cov_mat_inv@eta_vec_T_eta_eta_T @
-                                 np.kron(cov_mat_inv, cov_mat_inv)@d_gamma_d_theta_T).T
-                              + 0.5*d_h_d_theta_T.T@D_inv@(eta_tilde_cov_eta_vec_T_eta_eta_T@np.kron(cov_mat_inv, np.eye(
-                                  N))-np.outer(np.ones(N), np.eye(N).ravel('F')))@np.kron(np.eye(N), cov_mat_inv)@d_gamma_d_theta_T
-                              + (0.5*d_h_d_theta_T.T@D_inv@(eta_tilde_cov_eta_vec_T_eta_eta_T@np.kron(cov_mat_inv, np.eye(N))-np.outer(np.ones(N), np.eye(N).ravel('F')))@np.kron(np.eye(N), cov_mat_inv)@d_gamma_d_theta_T).T)/(T-r)
+#             Omega += wt**2 * (d_epsilon_d_theta_T.T@D_inv@cov_mat_inv@D_inv@d_epsilon_d_theta_T
+#                               + d_h_d_theta_T.T@D_inv@(eta_tilde_cov_eta_eta_T_cov_inv_eta_tilde-np.full(
+#                                   (N, N), 1))@D_inv@d_h_d_theta_T
+#                               + 0.25 *
+#                               d_gamma_d_theta_T.T@np.kron(np.eye(N),
+#                                                           cov_mat_inv)
+#                               @ (np.kron(cov_mat_inv, np.eye(N))@vec_eta_eta_Tvec_T_eta_eta_T@np.kron(cov_mat_inv, np.eye(N))-np.outer(np.eye(N).ravel('F'), np.eye(N).ravel('F')))
+#                               @ np.kron(np.eye(N), cov_mat_inv)@d_gamma_d_theta_T
+#                               - d_epsilon_d_theta_T.T@D_inv@cov_mat_inv@eta_eta_T_gamma_eta_tilde@D_inv@d_h_d_theta_T
+#                               - (d_epsilon_d_theta_T.T@D_inv@cov_mat_inv @
+#                                  eta_eta_T_gamma_eta_tilde@D_inv@d_h_d_theta_T).T
+#                               - 0.5*d_epsilon_d_theta_T.T@D_inv@cov_mat_inv@eta_vec_T_eta_eta_T@np.kron(
+#                                   cov_mat_inv, cov_mat_inv)@d_gamma_d_theta_T
+#                               - (0.5*d_epsilon_d_theta_T.T@D_inv@cov_mat_inv@eta_vec_T_eta_eta_T @
+#                                  np.kron(cov_mat_inv, cov_mat_inv)@d_gamma_d_theta_T).T
+#                               + 0.5*d_h_d_theta_T.T@D_inv@(eta_tilde_cov_eta_vec_T_eta_eta_T@np.kron(cov_mat_inv, np.eye(
+#                                   N))-np.outer(np.ones(N), np.eye(N).ravel('F')))@np.kron(np.eye(N), cov_mat_inv)@d_gamma_d_theta_T
+#                               + (0.5*d_h_d_theta_T.T@D_inv@(eta_tilde_cov_eta_vec_T_eta_eta_T@np.kron(cov_mat_inv, np.eye(N))-np.outer(np.ones(N), np.eye(N).ravel('F')))@np.kron(np.eye(N), cov_mat_inv)@d_gamma_d_theta_T).T)/(T-r)
 
-            Sigma += wt*(d_epsilon_d_theta_T.T@D_inv@cov_mat_inv@D_inv@d_epsilon_d_theta_T
-                         + d_h_d_theta_T.T@D_inv@(cov_mat_inv*cov_mat+np.eye(N))@D_inv@d_h_d_theta_T
-                         + 0.5 *
-                         d_gamma_d_theta_T.T@np.kron(cov_mat_inv,
-                                                     cov_mat_inv)@d_gamma_d_theta_T
-                         + d_h_d_theta_T.T@D_inv@cov_mat_tilde_col@np.kron(
-                             cov_mat_inv, cov_mat_inv)@d_gamma_d_theta_T
-                         + (d_h_d_theta_T.T@D_inv@cov_mat_tilde_col@np.kron(cov_mat_inv, cov_mat_inv)@d_gamma_d_theta_T).T)/(T-r)
+#             Sigma += wt*(d_epsilon_d_theta_T.T@D_inv@cov_mat_inv@D_inv@d_epsilon_d_theta_T
+#                          + d_h_d_theta_T.T@D_inv@(cov_mat_inv*cov_mat+np.eye(N))@D_inv@d_h_d_theta_T
+#                          + 0.5 *
+#                          d_gamma_d_theta_T.T@np.kron(cov_mat_inv,
+#                                                      cov_mat_inv)@d_gamma_d_theta_T
+#                          + d_h_d_theta_T.T@D_inv@cov_mat_tilde_col@np.kron(
+#                              cov_mat_inv, cov_mat_inv)@d_gamma_d_theta_T
+#                          + (d_h_d_theta_T.T@D_inv@cov_mat_tilde_col@np.kron(cov_mat_inv, cov_mat_inv)@d_gamma_d_theta_T).T)/(T-r)
 
-        Sigma_inv = np.linalg.inv(Sigma)
-        A_D = np.sqrt(np.diagonal(Sigma_inv@Omega@Sigma_inv/T))
-        result = pd.Series(
-            dict(zip(['Omega', 'Sigma', 'A_D'], [Omega, Sigma, A_D])))
-        return result
+#         Sigma_inv = np.linalg.inv(Sigma)
+#         A_D = np.sqrt(np.diagonal(Sigma_inv@Omega@Sigma_inv/T))
+#         result = pd.Series(
+#             dict(zip(['Omega', 'Sigma', 'A_D'], [Omega, Sigma, A_D])))
+#         return result
 
     def likelihood(self, lam, p, q, r_m):
         """
@@ -810,8 +810,8 @@ class SQMLE_VLDAR_BCD(object):
         lam_cov = lam[N*N*(p+q)+N:]
 
         lam_loc_mat = lam_loc.reshape(
-            (N, N*p), order='F')  # 将条件均值部分参数矩阵 N \times N*p
-        # 将条件方差部分参数矩阵 N \times N*q+1
+            (N, N*p), order='F')  #  N \times N*p
+        #  N \times N*q+1
         lam_var_mat = lam_var.reshape((N, 1+N*q), order='F')
 
         cov_mat = np.zeros((N, N))
@@ -907,8 +907,8 @@ class SQMLE_VLDAR_BCD(object):
         lam_cov = lam[N*N*(p+q)+N:]
 
         lam_loc_mat = lam_loc.reshape(
-            (N, N*p), order='F')  # 将条件均值部分参数矩阵 N \times N*p
-        # 将条件方差部分参数矩阵 N \times N*q+1
+            (N, N*p), order='F')  #  N \times N*p
+        #  N \times N*q+1
         lam_var_mat = lam_var.reshape((N, 1+N*q), order='F')
 
         cov_mat = np.zeros((N, N))
@@ -944,7 +944,7 @@ class SQMLE_VLDAR_BCD(object):
         mean_zeta_sq = np.mean(zeta**2, 0)
         mean_sgn_eta = np.mean( sgn_eta, 0)
 
-        # 算规范化的矩阵
+        # compute std of MACMs
         C_0 = self.cov(zeta, mean_zeta, 0,M)
 
         C_abs0 = self.cov(zeta_abs, mean_zeta_abs, 0,M)
@@ -957,7 +957,7 @@ class SQMLE_VLDAR_BCD(object):
         C_dabs0_half_inv = np.diag(1/np.sqrt(np.diagonal(C_abs0)))
         C_dsq0_half_inv = np.diag(1/np.sqrt(np.diagonal(C_sq0)))
 
-        # 计算样本的相关系数拉之后的向量
+        # sample MACMs
         R_mean = np.zeros((N, N*M))
         R_var_abs = np.zeros((N, N*M))
         R_var_sq = np.zeros((N, N*M))
@@ -971,7 +971,7 @@ class SQMLE_VLDAR_BCD(object):
         r_var_abs = R_var_abs.ravel('F')
         r_var_sq = R_var_sq.ravel('F')
 
-        # 计算相关系数拉之后的向量的方差
+        
         d = (p+q)*N*N+N
         U_mean = np.zeros((N*N*M, d))
         U_var_abs = np.zeros((N*N*M, d))
